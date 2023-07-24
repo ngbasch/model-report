@@ -1,0 +1,175 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+# Tidymodels setup {.tabset}
+
+To run these models, we will use the tidymodels framework. Each tab below represents a key step in developing a model. These steps will all come together to become a [Workflowset](https://workflowsets.tidymodels.org/) that we are able to tune
+
+To read more, see [tidymodels.org](https://www.tidymodels.org/start/).
+
+## Split data
+
+Below is the code for how we split data into training and test. Note that we are also setting up **`r params$n_folds`**-fold cross validation.
+
+```{r training_test}
+
+# Split data into training and test set --------------------
+set.seed(123)
+df_split <-
+   if(is.null(params$group_split_var)){
+     print("Non-Group Split")
+    initial_split(df,prop = params$split_pct, strata = params$strata_var)
+   } else if (is.null(params$strata_var)){
+      print("Group Split, Non Stratified")
+      group_initial_split (df,prop = params$split_pct, group = params$group_split_var)
+   } else{
+       print("Group Split, Stratified")
+      group_initial_split (df,prop = params$split_pct, group = params$group_split_var, strata = params$strata_var)
+  }
+
+df_train <- training(df_split)
+df_test <- testing(df_split)
+
+# Split training set into k-fold cross validation for evaluation later
+df_folds<- 
+     if(is.null(params$group_split_var)){
+     print("Non-Group CV")
+     vfold_cv(df_train,v = params$n_folds, strata = params$strata_var)
+   } else if (is.null(params$strata_var)){
+      print("Group CV, Non Stratified")
+      group_vfold_cv (df_train,prop = params$split_pct, group = params$group_split_var,  v = params$n_folds,)
+   } else{
+       print("Group CV, Stratified")
+      group_vfold_cv (df_train,prop = params$split_pct, group = params$group_split_var,  v = params$n_folds, strata = params$strata_var)
+  }
+
+
+```
+
+Below are some visualizations that show how the test and training data differ
+
+```{r show_splits, warning=FALSE,message=FALSE, fig.show="hold", fig.width=10,out.width="50%"}
+
+#Visualize training and test data
+PlotNumericColumns(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
+                     dplyr::select(predict_vars, outcome_var, dataset),
+                   fill_column = "dataset")
+PlotCategoricalColumns(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
+                   dplyr::select(predict_vars, dataset),
+                   fill_column = "dataset")
+
+
+# df %>% ggplot(aes(x = area_ac, y = total_co2eq_kg_ac, colour = region)) +geom_point()
+```
+
+
+```{r plot_vs_outcome_splits, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+
+PlotNumericColumnsVOutcome(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
+                     dplyr::select(predict_vars, outcome_var, dataset),
+                     outcome = outcome_var,
+                   colour_column = "dataset")
+PlotCategoricalColumnsVOutcome(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
+                   dplyr::select(predict_vars, dataset, outcome_var),
+                   outcome = outcome_var,
+                   fill_column = "dataset")
+
+```
+
+
+```{r show_splits_fips, warning=FALSE,message=FALSE,fig.width=10,out.width="100%"}
+
+# Insert some custom EDA here.
+
+# By fips code
+# PlotCategoricalColumns(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
+#                      dplyr::select(loc_fips, dataset),
+#                    fill_column = "dataset")+
+#   theme(axis.text=element_text(size=5))
+
+
+
+
+
+```
+
+## Specs
+
+Below are the specs (models) we are considering in our workflow.
+
+```{r specs, warning=FALSE}
+source(file.path(here(),input_path,"specs.R"),echo = TRUE,local = knitr::knit_global())
+
+
+#Remove models we're not interested in running
+model_list<-model_list[names(model_list) %in% params$models_to_run]
+
+
+```
+
+## Recipes
+
+We may be considering different sets of predictors and/or different feature engineering steps. We define those below.
+
+```{r recipes, warning=FALSE}
+source(file.path(here(),input_path,"recipes.R"),echo = TRUE,local = knitr::knit_global())
+
+
+#Remove recipes were not interested in
+preproc_list<-preproc_list[names(preproc_list) %in% params$recipes_to_run]
+
+
+```
+
+## Workflowset
+
+Recipes and Specs combine to create a workflowset, which is just an object that contains each model we will be training.
+
+```{r workflow_set, warning=FALSE}
+
+# This is where we define what's a part of the workflow set
+df_wf_set <-
+  workflow_set( # NOTE - ensure that preproc does not contain underscore (for later plotting)
+               preproc =preproc_list,
+               models = model_list,
+               cross = T
+               )
+
+
+```
+
+In total there are **`r nrow(df_wf_set)`** total models, which we summarize below:
+
+```{r workflow_set_reactable, warning=FALSE, message=FALSE}
+df_wf_set%>%
+  rowwise()%>%
+  mutate(
+        predictors = paste(info$workflow[[1]]$pre$actions$recipe$recipe$var_info%>%filter(role == "predictor")%>%pull(variable), collapse = "<br>"),
+         outcome =  paste(info$workflow[[1]]$pre$actions$recipe$recipe$var_info%>%filter(role == "outcome")%>%pull(variable),   collapse = ","),
+        outcome_predictors = paste("<b>Outcome</b>",
+                           outcome,
+                           "<br><b>Predictors</b>",
+                           predictors,
+                           sep = "<br>"),
+        operations = paste(capture.output(info$workflow[[1]]$pre$actions$recipe$recipe)[-(1:10)], collapse = "<br><br>"),
+         workflow_output = paste(capture.output(info$workflow, type = "output"), collapse = "<br>"))%>%
+  dplyr::select(wflow_id, outcome_predictors:workflow_output)%>%
+    reactable(
+            columns = list(workflow_output = colDef(html = TRUE, width = 1000),
+                           operations = colDef(html = TRUE),
+                           outcome_predictors = colDef(html = TRUE, width = 250)
+
+                           ),
+            outlined = TRUE,
+              highlight = TRUE,
+              striped = TRUE,
+              showSortable = TRUE,
+              compact = FALSE,
+              bordered = TRUE,
+              defaultExpanded = F,
+              filterable = TRUE,
+              showPageSizeOptions = TRUE)
+
+```

@@ -1,0 +1,14 @@
+# Mac annoyances
+**/.DS_Store
+
+# R-specific code
+
+# History files
+.Rhistory
+.Rapp.history
+.Rproj
+
+# Session Data files
+.RData
+.RDataTmp
+.Rproj.user

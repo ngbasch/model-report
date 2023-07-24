@@ -1,0 +1,20 @@
+params:
+  run_name: "local"
+  blurb: "Local development"
+  path: "Example"
+  PR_link: "None"
+  Jira_link: "None"
+  save_results: FALSE
+  model_to_save: "main_rf"
+  split_pct: 0.9
+  group_split_var: !expr NULL
+  strata_var: !expr NULL
+  n_folds: 5
+  recipes_to_run: !expr c("main", "mainwidth")
+  models_to_run: !expr c("xgb", "rf")
+  models_to_explain: !expr c("main_rf")
+  explain_data: "Train"
+  error_colours: !expr NULL
+  run_stack: TRUE
+  run_explainer: TRUE
+  run_cache: FALSE

@@ -1,0 +1,116 @@
+---
+title: "Modeling Run"
+author: "Nathan Basch"
+date: "Last compiled on `r  paste0(format(Sys.time(), tz='America/New_York'), ' EST')`"
+params:
+  run_name: "local"
+  blurb: "Local development"
+  path: "Example"
+  PR_link: "None"
+  Jira_link: "None"
+  save_results: FALSE
+  model_to_save: "main_rf"
+  split_pct: 0.9
+  group_split_var: !expr NULL
+  strata_var: !expr NULL
+  n_folds: 5
+  recipes_to_run: !expr c("main", "mainwidth")
+  models_to_run: !expr c("xgb", "rf")
+  models_to_explain: !expr c("main_rf")
+  explain_data: "Train"
+  error_colours: !expr NULL
+  run_stack: TRUE
+  run_explainer: TRUE
+  run_cache: FALSE
+output:
+  rmdformats::material:
+    code_folding: hide
+    thumbnails: FALSE
+    lightbox: TRUE
+    highlight: tango
+  pdf_document: default
+description: "This is the model output for a supply shed baseline modeling run"
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+options(dplyr.summarise.inform = FALSE)
+
+
+
+library(rstudioapi)
+library(here)
+# if (params$run_name == "local"){
+# setwd(dirname(getActiveDocumentContext()$path))       # Set working directory to source file location
+# }
+
+# knitr::opts_knit$set(root.dir = dirname(getActiveDocumentContext()$path))
+knitr::opts_knit$set(root.dir = file.path(here::here()))
+knitr::opts_chunk$set(cache.path = file.path(here::here(),params$path, "cache/"))
+
+input_path<-file.path(params$path, "src")
+
+
+```
+
+# Welcome!
+
+This document is a template workflow to show the machine learning development process. Included are the following tabs:
+
+-   **Data and features:** A description of data, cleaning methodology and features
+
+-   **Tidymodels setup:** A setup of model engines and feature engineering "recipes"
+
+-   **Tuning and Metrics:** Executions summaries of model performance
+
+-   **Explain**: Metrics to "explain" aspects of black box models
+
+-   **Map:** A map to investigate if there is any geographic patterns of error
+
+These are the parameters used in this specific run:
+
+```{r param_tbl, message=FALSE}
+
+t<-params
+class(t) <- "list"
+sapply(t[!sapply(t, purrr::is_empty)], paste, collapse = ', ')%>%
+  as.data.frame()%>%
+  rename("value(s)" = 1)%>%
+  reactable()
+
+```
+
+
+```{r child = "children/data_child.Rmd"}
+```
+
+
+```{r child = "children/tidymodels_setup_child.Rmd"}
+```
+
+
+```{r child = "children/tuning_metrics_child.Rmd"}
+```
+
+
+```{r child = "children/explain_child.Rmd"}
+```
+
+
+
+# Summary
+
+
+```{r summary_table, message=FALSE}
+# Trying to put this on top of report:
+# https://stackoverflow.com/questions/23570718/creating-summaries-at-the-top-of-a-knitr-report-that-use-variables-that-are-defi
+# {r chunk-a, ref.label=c('tune_rf','param_table')}
+
+  rmses%>%
+  filter(rank == min(rank))%>%
+  rename("best_model" = m)%>%
+  FormatReactable(filt = F)
+  
+  
+
+```

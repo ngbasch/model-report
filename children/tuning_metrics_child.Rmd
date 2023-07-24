@@ -1,0 +1,304 @@
+---
+title: "tuning_metrics_child"
+output: html_document
+---
+
+# Tuning and Metrics {.tabset}
+
+Workflowsets are first tuned in the code snippet below:
+
+```{r tune_workflows, message=FALSE,cache = params$run_cache, class.source = 'fold-show'}
+library(doParallel)
+library(parallel)
+
+registerDoParallel(cores = parallel::detectCores(logical = FALSE))
+
+#Run workflow set through cross validation -----------------------
+tuned_workflows<-workflow_map(
+  df_wf_set%>%
+    option_add(control = control_stack_grid()),
+  "tune_grid",
+  metrics = metric_set(rmse, mape, mpe, rsq),
+  resamples = df_folds,
+  # Number of grids only relevant for tuning
+  grid = 10,
+  verbose = T)
+
+```
+
+```{r stacking, warning=FALSE,cache = params$run_cache, eval = params$run_stack}
+# Combine mdoels with stacks
+# https://stacks.tidymodels.org/articles/basics.html
+#https://stacks.tidymodels.org/articles/workflowsets.html
+# https://www.youtube.com/watch?v=HZXZxvdpDOg&t=2160s
+df_wf_set_stack<-
+  #Initiliaze the stacks
+  stacks()%>%
+  add_candidates(tuned_workflows)%>%
+  # determine how to combine their predictions
+  # Look deeper into setting up a meta model
+  # include fewer models by proposing higher penalties
+  blend_predictions(penalty = 10^seq(-2, -0.5, length = 20))%>%
+  # fit the candidates with nonzero stacking coefficients
+  fit_members()
+
+# Relevant when tuning:
+# collect_parameters(df_wf_set_stack, "rf")
+
+
+```
+
+Tuned models are saved [HERE] on S3.
+
+## Tuned Models
+
+```{r rank_results, message=FALSE,warning=FALSE, fig.width=12,out.width="100%", dpi=300}
+ranked_results<-
+  rank_results(tuned_workflows)%>%
+    tidyr::extract(wflow_id, c("recipe", "model"), "([^_]+)_(.*)")
+
+
+ranked_results%>%
+  ggplot(aes(x = rank, y = mean, colour = model, shape = recipe))+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean - std_err,
+                    ymax = mean + std_err))+
+  scale_colour_iwanthue() +
+  scale_x_continuous(breaks= pretty_breaks())+
+  labs(y="")+
+  facet_wrap(~.metric, scales = "free")
+
+
+FormatReactable(rank_results(tuned_workflows))
+ensemble_predictions<- collect_predictions(tuned_workflows)
+
+```
+
+## Stacking
+
+After each model is trained, we can generate an ensemble model via stacking:
+
+```{r stacking_summary, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300,eval = params$run_stack}
+print(df_wf_set_stack)
+
+
+autoplot(df_wf_set_stack)
+# autoplot(df_wf_set_stack, type = "weights")
+
+ensemble_preds<-
+  df_test%>%
+  mutate(predict(df_wf_set_stack, .))%>%
+  mutate(ensemble_error = !!sym(outcome_var) - .pred)
+
+member_preds_test <-
+  df_test %>%
+  dplyr::select(!!sym(outcome_var))%>%
+  # Include all members as an additional
+  bind_cols(predict(df_wf_set_stack, df_test, members = TRUE))
+
+# Member predictions compared to ensemble
+member_stats_test<-
+  map_dfr(colnames(member_preds_test), rmse, truth = !!sym(outcome_var), data = member_preds_test) %>%
+  mutate(member = colnames(member_preds_test))
+
+
+# On training data
+member_preds_train<-
+  df_train %>%
+  dplyr::select(!!sym(outcome_var))%>%
+  # Include all members as an additional
+  bind_cols(predict(df_wf_set_stack, df_train, members = TRUE))
+
+member_stats_train<-
+  map_dfr(colnames(member_preds_train), rmse, truth = !!sym(outcome_var), data = member_preds_train) %>%
+  mutate(member = colnames(member_preds_train))
+
+
+ensemble_preds%>%
+  ggplot(aes(x = !!sym(outcome_var), y = .pred))+
+  geom_point()+
+  geom_abline(linetype = "dashed",
+              color = "gray")+
+  labs(x = "actual", y = "predicted", title = "Stacking Test Actual vs Predicted", subtitle= paste0("(RMSE: ", round(member_stats_test%>%filter(member == ".pred")%>%pull(.estimate), 2), ")"))+
+  theme_bw()
+
+
+FormatReactable(member_stats_test)
+```
+
+```{r tune_extract_individual, warning=FALSE, cache = params$run_cache, cache.lazy = FALSE}
+fits<-  lapply(df_wf_set$wflow_id,
+               TuneExtractModel,
+               tuned_wf =tuned_workflows,
+               outcome_var = outcome_var,
+               training_data = df_train,
+               testing_data = df_test,
+               # If no error colours were set, just use the outcome variable
+               error_colours = ifelse(sum(is.null(params$error_colours)) > 0, outcome_var,params$error_colours),
+               explain_data_input = params$explain_data)
+
+names(fits) <- df_wf_set$wflow_id
+
+#example use:
+#fits[['main_rf']][[2]]
+# browser()
+
+if (params$save_results){
+  saveRDS(fits[[params$model_to_save]][[1]], paste0("~/downloads/", params$run_name,"_", params$model_to_save,"_fit",".RDS"))
+  
+  # WriteToS3(df = fits[[params$model_to_save]][[1]]%>%extract_fit_parsnip(),
+  #           s3name = paste0(params$run_name,"_", params$model_to_save,"_fit"),
+  #           type = "RDS",
+  #           obj = data_directory)
+}
+
+
+```
+
+## RMSE Summary
+
+Below is a summary of RMSEs across the training data, Cross-validated model set, and test set for all **`r nrow(df_wf_set)`** models plus the ensemble.
+
+```{r rmse_summary, warning=FALSE}
+rmses<-
+  lapply(df_wf_set$wflow_id, function(e){
+
+  tibble(m = e,
+         test_rmse = fits[[e]][[3]],
+         train_rmse = fits[[e]][[4]]
+         )
+})%>%
+  bind_rows()%>%
+  left_join(
+    ranked_results%>%
+      mutate(m = paste0(recipe,"_", model))%>%
+      filter(.metric == "rmse")%>%
+      dplyr::select(m, "cv_rmse" = mean),
+    by = "m"
+  )
+
+if(params$run_stack){
+  rmses<-
+    rmses %>%
+  bind_rows(member_stats_test%>%
+              filter(member == ".pred")%>%
+              transmute(m = "ensemble", test_rmse = .estimate)%>%
+              left_join(member_stats_train%>%
+                          filter(member == ".pred")%>%
+                          transmute(m = "ensemble",
+                                    train_rmse = .estimate), by = "m")
+            )%>%
+  arrange(test_rmse)%>%
+  mutate(rank = 1:n())
+}
+
+FormatReactable(rmses)
+
+```
+
+Below is a grid of how the errors across models are correlated
+```{r crossmodel_error, warning=FALSE,fig.width=12,out.width="100%", dpi=300}
+
+error_crossmodel<-
+  lapply(df_wf_set$wflow_id, function(e){
+    fits[[e]][[8]]%>%
+      dplyr::select(.pred, error, model, !!sym(outcome_var))%>%
+      mutate(wflow_id = e,
+             id = 1:n())
+})%>%
+  bind_rows()%>%
+  arrange(- !!sym(outcome_var))%>%
+  filter(model == "Test")
+
+final<-
+  lapply(df_wf_set$wflow_id, function(e){
+  error_crossmodel%>%
+    mutate(m = e)%>%
+    group_by(id)%>%
+    mutate(val = error[wflow_id == e])%>%
+    group_by(m,wflow_id)%>%
+    summarise(mae = Metrics::mae(error,val),
+              rmse = Metrics::rmse(error,val),
+              cor = cor(error,val))
+  })%>%
+  bind_rows()%>%
+  dplyr::select(m, wflow_id, cor)%>%
+  spread(wflow_id, cor)%>%
+  arrange(m)
+
+FormatReactable(final)
+
+gg1<-error_crossmodel%>%
+  group_by(id)%>%
+  mutate(max_error = max(error),
+         min_error = min(error))%>%
+    ggplot()+
+    geom_point(aes(x = !!sym(outcome_var), y = error, colour = wflow_id), 
+               alpha = 0.5, size = 0.5)+
+   geom_segment(aes(y = max_error, yend= min_error,x = !!sym(outcome_var),xend=!!sym(outcome_var), group = id),
+                linewidth =0.01)+
+    geom_abline(slope = 0, colour = "red")+
+    facet_wrap(~model, nrow = 1, scales = "free_x")+
+    scale_colour_iwanthue()+
+    labs(x = "Actual Value")
+
+# Version 2
+gg2<-error_crossmodel%>%
+  group_by(id)%>%
+  mutate(max_error = max(error),
+         min_error = min(error))%>%
+  ungroup()%>%
+  mutate(id = fct_reorder(as.character(id), -error))%>%
+    ggplot()+
+    geom_point(aes(x = id, y = error, colour = wflow_id), 
+               alpha = 0.5, size = 0.5)+
+   geom_segment(aes(y = max_error, yend= min_error,x = id,xend= id, group = id),
+                linewidth =0.01)+
+    geom_abline(slope = 0, colour = "red")+
+    facet_wrap(~model, nrow = 1, scales = "free_x")+
+    scale_colour_iwanthue()+
+    theme(axis.text.x=element_blank()) +
+    labs(x = "Observation")
+
+
+grid.arrange(gg1, gg2, nrow = 1)
+
+```
+
+
+```{r,cache = params$run_cache}
+GenerateChunk<-
+  function(nm, m) {
+    template<-
+        c(
+          "### {{nm}}\n",
+          "```{r, echo = FALSE, fig.width=12, out.width='100%', dpi=300}\n",
+          #"fits[['{{nm}}_{{m}}']][[1]]%>%extract_fit_engine()%>%print()\n",
+          "fits[['{{nm}}_{{m}}']][[5]]\n",
+          "fits[['{{nm}}_{{m}}']][[7]]\n",
+          "fits[['{{nm}}_{{m}}']][[2]]\n",
+          "fits[['{{nm}}_{{m}}']][[9]]\n",
+          "fits[['{{nm}}_{{m}}']][[10]]\n",
+          "```\n",
+          "\n"
+        )
+
+    return(knitr::knit_expand(text = template))
+}
+text<- c()
+for (a in params$models_to_run){
+
+  text<-c(text, paste0("## ",a, "{.tabset}"))
+
+  # Split into all the different recipes
+  text<-
+    c(text,
+          lapply(params$recipes_to_run, GenerateChunk, m = a)%>%unlist()
+    )
+}
+```
+
+`r knitr::knit(text = text)`
+
+```{r child = file.path(params$path, "other_chunks","other_chunks.Rmd"), eval = file.exists(file.path(params$path, "other_chunks","other_chunks.Rmd"))}
+```

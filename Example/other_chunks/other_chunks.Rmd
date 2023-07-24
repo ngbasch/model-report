@@ -1,0 +1,10 @@
+---
+title: "other_chunks_child"
+output: html_document
+---
+
+## Other info
+
+You can use this chunk to customize some results! If you don't provide an "other_chunks/other_chunks.Rmd" in your directory, this tab won't show up!
+
+

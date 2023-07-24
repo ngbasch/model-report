@@ -1,0 +1,101 @@
+---
+title: "data_child"
+output: html_document
+---
+
+
+# Data and features {.tabset}
+
+
+
+## Load data
+```{r packages, include=FALSE}
+# Call file to load data
+source(file.path(here(),input_path,"packages.R"),local = knitr::knit_global())
+
+```
+
+
+```{r load_data, message=FALSE, cache = params$run_cache, fig.width=10, fig.height = 5,out.width="100%"}
+# Call file to load data
+source(file.path(here(),input_path,"load_data.R"),echo = TRUE, local = knitr::knit_global())
+
+
+```
+
+## Clean Data
+
+See data cleaning code below.
+
+```{r clean_data, message=FALSE, fig.width=10, fig.height = 5,out.width="100%"}
+
+# Call file to clean data
+source(file.path(here(),input_path,"clean_data.R"),echo = TRUE, local = knitr::knit_global(), max.deparse.length=1e3)
+
+vis_miss(df,warn_large_data = F)
+
+```
+
+Below is the entire dataset (with all original columns), which you can feel free to filter and explore.
+
+```{r df_reactable, message=FALSE, warning=FALSE}
+# Show top 50 rows
+FormatReactable(head(df))
+```
+
+## Features
+
+See https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel/sentinel-2/ for definition of some of the different remote sensing indices. 
+
+```{r show_features, include=F}
+source(file.path(here(),input_path,"features_outcome.R"),echo = TRUE, local = knitr::knit_global())
+
+
+```
+
+Our Outcome variable is **`r outcome_var`** .
+
+Our potential predictor variables are **`r predict_vars`** .
+
+## EDA
+
+Below is some exploratory data analysis showing i) a histogram of all numeric columns, and ii) the frequencies of all categorical columns in the data
+
+```{r eda_all_columns, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+
+PlotNumericColumns(df%>%dplyr::select(predict_vars, outcome_var))
+PlotCategoricalColumns(df%>%dplyr::select(predict_vars))
+
+
+# Boxplot (x = year, y = total emisisons) Facet by crop
+
+# cor_df<-cor(df%>%dplyr::select(where(is.numeric))%>%as_tibble())
+# corrplot(cor_df)
+
+```
+
+Below is a correlation plot of all numeric variables
+```{r correlation_plot, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,dpi=300}
+
+cor_df<-cor(df%>%dplyr::select(predict_vars,outcome_var)%>%dplyr::select(where(is.numeric))%>%as_tibble())
+corrplot(cor_df, method = 'color', order = 'alphabet', tl.cex = 0.5)
+
+```
+
+
+Below is the relationship between each variable and the outcome variable
+```{r plot_vs_outcome, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+
+PlotNumericColumnsVOutcome(df%>%dplyr::select(predict_vars,outcome_var), outcome_var)
+PlotCategoricalColumnsVOutcome(df%>%dplyr::select(predict_vars,outcome_var), outcome_var)
+
+
+```
+
+Below is all missing data.
+
+```{r eda_missing, message=FALSE, warning=FALSE, fig.width=10, fig.height = 5,out.width="100%"}
+# Missing data
+vis_miss(df%>%dplyr::select(predict_vars, outcome_var))
+
+```
