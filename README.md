@@ -20,7 +20,7 @@ The model will allow users to explore important steps in the modeling process in
 
 ## How to set up your own report
 
-See `utils/Example` for what an example directory looks like with a random forest model using the `iris` data.
+See `Example/` for what an example directory looks like with a random forest model using the `iris` data.
 
 1.  Create a modeling directory with the following folders: i) `/src` - customized R code, ii) `/reports` - where reports get saved), iii) `/other_chunks` - if you want any additional analysis in the tuning section (optional), iv) `/cache` - where cached data gets saved (optional)
 2.  Update `/src` R scripts with whatever you want your analysis to be.
@@ -31,8 +31,8 @@ See `utils/Example` for what an example directory looks like with a random fores
     5.  `src/specs.R` is where we define which modeling engines to use (e.g., RF, xgboost, lm)
     6.  `src/recipes.R` is where we define any other feature engineering steps as well as the outcome and predict variable(s) for multiple models
 3.  Optionally update `/other_chunks` if you want additional analysis in the tuning section of the report.
-4.  Create a set of parameters in a yaml file to tell the Rmarkdown report key information about the model run. Most important in that file is the `path` value, which should be wherever model directory was created in step 1. See example in `utils/Example/example_params.yaml` .
-5.  After previous steps are complete, you can then run the model by rendering the markdown file given parameter yaml file. See example in `utils/Example/run_report.R` .
+4.  Create a set of parameters in a yaml file to tell the Rmarkdown report key information about the model run. Most important in that file is the `path` value, which should be wherever model directory was created in step 1. See example in `Example/example_params.yaml` .
+5.  After previous steps are complete, you can then run the model by rendering the markdown file given parameter yaml file. See example in `Example/run_report.R` .
 6.  If you are experience any errors, feel free to add a browser() statement in the chunk where the error is occurring to debug. **Be sure to remove debugging code before pushing any RMarkdown changes to Master**. For more information in RMarkdown, see: <https://support.posit.co/hc/en-us/articles/205612627-Debugging-with-RStudio#debugging-in-r-markdown-documents>
 
 ## How does the report come together?
