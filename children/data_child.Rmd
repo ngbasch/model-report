@@ -10,6 +10,9 @@ output: html_document
 
 ## Load data
 ```{r packages, include=FALSE}
+# Load functions specific to the model report file
+source("scripts/model_report_functions.R",echo = TRUE, local = knitr::knit_global())
+
 # Call file to load data
 source(file.path(here(),input_path,"packages.R"),local = knitr::knit_global())
 
@@ -61,7 +64,7 @@ Our potential predictor variables are **`r predict_vars`** .
 
 Below is some exploratory data analysis showing i) a histogram of all numeric columns, and ii) the frequencies of all categorical columns in the data
 
-```{r eda_all_columns, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+```{r eda_all_columns, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300, eval=params$run_visualization}
 
 PlotNumericColumns(df%>%dplyr::select(predict_vars, outcome_var))
 PlotCategoricalColumns(df%>%dplyr::select(predict_vars))
@@ -75,7 +78,7 @@ PlotCategoricalColumns(df%>%dplyr::select(predict_vars))
 ```
 
 Below is a correlation plot of all numeric variables
-```{r correlation_plot, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,dpi=300}
+```{r correlation_plot, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,dpi=300,eval=params$run_visualization}
 
 cor_df<-cor(df%>%dplyr::select(predict_vars,outcome_var)%>%dplyr::select(where(is.numeric))%>%as_tibble())
 corrplot(cor_df, method = 'color', order = 'alphabet', tl.cex = 0.5)
@@ -84,7 +87,7 @@ corrplot(cor_df, method = 'color', order = 'alphabet', tl.cex = 0.5)
 
 
 Below is the relationship between each variable and the outcome variable
-```{r plot_vs_outcome, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+```{r plot_vs_outcome, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300,eval=params$run_visualization}
 
 PlotNumericColumnsVOutcome(df%>%dplyr::select(predict_vars,outcome_var), outcome_var)
 PlotCategoricalColumnsVOutcome(df%>%dplyr::select(predict_vars,outcome_var), outcome_var)
@@ -94,8 +97,8 @@ PlotCategoricalColumnsVOutcome(df%>%dplyr::select(predict_vars,outcome_var), out
 
 Below is all missing data.
 
-```{r eda_missing, message=FALSE, warning=FALSE, fig.width=10, fig.height = 5,out.width="100%"}
+```{r eda_missing, message=FALSE, warning=FALSE, fig.width=10, fig.height = 5,out.width="100%",eval=params$run_visualization}
 # Missing data
-vis_miss(df%>%dplyr::select(predict_vars, outcome_var))
+vis_miss(df%>%dplyr::select(predict_vars, outcome_var), warn_large_data = F)
 
 ```

@@ -14,43 +14,22 @@ To read more, see [tidymodels.org](https://www.tidymodels.org/start/).
 Below is the code for how we split data into training and test. Note that we are also setting up **`r params$n_folds`**-fold cross validation.
 
 ```{r training_test}
-
+# browser()
 # Split data into training and test set --------------------
-set.seed(123)
-df_split <-
-   if(is.null(params$group_split_var)){
-     print("Non-Group Split")
-    initial_split(df,prop = params$split_pct, strata = params$strata_var)
-   } else if (is.null(params$strata_var)){
-      print("Group Split, Non Stratified")
-      group_initial_split (df,prop = params$split_pct, group = params$group_split_var)
-   } else{
-       print("Group Split, Stratified")
-      group_initial_split (df,prop = params$split_pct, group = params$group_split_var, strata = params$strata_var)
-  }
+source("scripts/training_test.R", echo = TRUE, local = knitr::knit_global())
 
-df_train <- training(df_split)
-df_test <- testing(df_split)
+```
+
+```{r training_test_folds, eval=params$n_folds > 1}
 
 # Split training set into k-fold cross validation for evaluation later
-df_folds<- 
-     if(is.null(params$group_split_var)){
-     print("Non-Group CV")
-     vfold_cv(df_train,v = params$n_folds, strata = params$strata_var)
-   } else if (is.null(params$strata_var)){
-      print("Group CV, Non Stratified")
-      group_vfold_cv (df_train,prop = params$split_pct, group = params$group_split_var,  v = params$n_folds,)
-   } else{
-       print("Group CV, Stratified")
-      group_vfold_cv (df_train,prop = params$split_pct, group = params$group_split_var,  v = params$n_folds, strata = params$strata_var)
-  }
-
+source("scripts/folds.R",echo = TRUE, local = knitr::knit_global())
 
 ```
 
 Below are some visualizations that show how the test and training data differ
 
-```{r show_splits, warning=FALSE,message=FALSE, fig.show="hold", fig.width=10,out.width="50%"}
+```{r show_splits, warning=FALSE,message=FALSE, fig.show="hold", fig.width=10,out.width="50%", eval=params$run_visualization}
 
 #Visualize training and test data
 PlotNumericColumns(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
@@ -65,7 +44,7 @@ PlotCategoricalColumns(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%
 ```
 
 
-```{r plot_vs_outcome_splits, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300}
+```{r plot_vs_outcome_splits, message=FALSE, warning=FALSE, fig.show="hold", fig.width=10,out.width="50%", dpi=300, eval=params$run_visualization}
 
 PlotNumericColumnsVOutcome(df_train%>%mutate(dataset = "train")%>%bind_rows(df_test%>%mutate(dataset = "test"))%>%
                      dplyr::select(predict_vars, outcome_var, dataset),
@@ -103,10 +82,6 @@ Below are the specs (models) we are considering in our workflow.
 source(file.path(here(),input_path,"specs.R"),echo = TRUE,local = knitr::knit_global())
 
 
-#Remove models we're not interested in running
-model_list<-model_list[names(model_list) %in% params$models_to_run]
-
-
 ```
 
 ## Recipes
@@ -116,11 +91,6 @@ We may be considering different sets of predictors and/or different feature engi
 ```{r recipes, warning=FALSE}
 source(file.path(here(),input_path,"recipes.R"),echo = TRUE,local = knitr::knit_global())
 
-
-#Remove recipes were not interested in
-preproc_list<-preproc_list[names(preproc_list) %in% params$recipes_to_run]
-
-
 ```
 
 ## Workflowset
@@ -129,14 +99,8 @@ Recipes and Specs combine to create a workflowset, which is just an object that 
 
 ```{r workflow_set, warning=FALSE}
 
-# This is where we define what's a part of the workflow set
-df_wf_set <-
-  workflow_set( # NOTE - ensure that preproc does not contain underscore (for later plotting)
-               preproc =preproc_list,
-               models = model_list,
-               cross = T
-               )
-
+# Create workflowset
+source("scripts/create_workflowset.R",echo = TRUE, local = knitr::knit_global())
 
 ```
 

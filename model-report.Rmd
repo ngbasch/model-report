@@ -5,7 +5,7 @@ date: "Last compiled on `r  paste0(format(Sys.time(), tz='America/New_York'), ' 
 params:
   run_name: "local"
   blurb: "Local development"
-  path: "Example"
+  path: "utils/model_report/Example"
   PR_link: "None"
   Jira_link: "None"
   save_results: FALSE
@@ -22,6 +22,7 @@ params:
   run_stack: TRUE
   run_explainer: TRUE
   run_cache: FALSE
+  run_visualization: TRUE
 output:
   rmdformats::material:
     code_folding: hide
@@ -40,6 +41,8 @@ options(dplyr.summarise.inform = FALSE)
 
 library(rstudioapi)
 library(here)
+library(reactable)
+library(dplyr)
 # if (params$run_name == "local"){
 # setwd(dirname(getActiveDocumentContext()$path))       # Set working directory to source file location
 # }
@@ -49,7 +52,6 @@ knitr::opts_knit$set(root.dir = file.path(here::here()))
 knitr::opts_chunk$set(cache.path = file.path(here::here(),params$path, "cache/"))
 
 input_path<-file.path(params$path, "src")
-
 
 ```
 
@@ -106,10 +108,10 @@ sapply(t[!sapply(t, purrr::is_empty)], paste, collapse = ', ')%>%
 # https://stackoverflow.com/questions/23570718/creating-summaries-at-the-top-of-a-knitr-report-that-use-variables-that-are-defi
 # {r chunk-a, ref.label=c('tune_rf','param_table')}
 
-  rmses%>%
-  filter(rank == min(rank))%>%
-  rename("best_model" = m)%>%
-  FormatReactable(filt = F)
+  # rmses%>%
+  # filter(rank == min(rank))%>%
+  # rename("best_model" = m)%>%
+  # FormatReactable(filt = F)
   
   
 

@@ -7,22 +7,25 @@ output: html_document
 
 Workflowsets are first tuned in the code snippet below:
 
-```{r tune_workflows, message=FALSE,cache = params$run_cache, class.source = 'fold-show'}
-library(doParallel)
-library(parallel)
+```{r tune_workflows_cv, message=FALSE,cache = params$run_cache, class.source = 'fold-show', eval=params$n_folds > 1}
+# browser()
+#Run workflow set through cross validation ----
+source("scripts/tune_cv.R",echo = TRUE, local = knitr::knit_global())
 
-registerDoParallel(cores = parallel::detectCores(logical = FALSE))
 
-#Run workflow set through cross validation -----------------------
-tuned_workflows<-workflow_map(
-  df_wf_set%>%
-    option_add(control = control_stack_grid()),
-  "tune_grid",
-  metrics = metric_set(rmse, mape, mpe, rsq),
-  resamples = df_folds,
-  # Number of grids only relevant for tuning
-  grid = 10,
-  verbose = T)
+
+#t<-extract_workflow_set_result(tuned_workflows, "mainall_rf")
+
+# autoplot(tuned_workflows)
+# tuned_workflows[6,][["result"]][[1]][[".notes"]]
+
+# Save tuned workflow to S3
+# if (params$save_results){
+#   WriteToS3(df = tuned_workflows,
+#             s3name = paste0(params$run_name, "_tuned"),
+#             type = "RDS",
+#             obj = data_directory)
+# }
 
 ```
 
@@ -45,6 +48,7 @@ df_wf_set_stack<-
 # Relevant when tuning:
 # collect_parameters(df_wf_set_stack, "rf")
 
+# TODO: Save stacked model to S3
 
 ```
 
@@ -52,7 +56,7 @@ Tuned models are saved [HERE] on S3.
 
 ## Tuned Models
 
-```{r rank_results, message=FALSE,warning=FALSE, fig.width=12,out.width="100%", dpi=300}
+```{r rank_results, message=FALSE,warning=FALSE, fig.width=12,out.width="100%", dpi=300,eval=params$n_folds > 1}
 ranked_results<-
   rank_results(tuned_workflows)%>%
     tidyr::extract(wflow_id, c("recipe", "model"), "([^_]+)_(.*)")
@@ -67,6 +71,24 @@ ranked_results%>%
   scale_x_continuous(breaks= pretty_breaks())+
   labs(y="")+
   facet_wrap(~.metric, scales = "free")
+
+# Plot of predictions from each fold
+collect_predictions(tuned_workflows, summarize = F)%>%
+  ggplot(aes(y = .pred, x = !!sym(outcome_var), colour = id))+
+  geom_point(alpha = 0.1)+
+  facet_wrap(~wflow_id)+
+  scale_colour_iwanthue()+
+  guides(colour = guide_legend(override.aes = list(alpha=1)))+
+  labs(colour = "")
+
+# V2
+# collect_predictions(tuned_workflows, summarize = F)%>%
+#   ggplot(aes(y = .pred, x = !!sym(outcome_var), colour = id))+
+#   geom_point(alpha = 0.1)+
+#   facet_grid(wflow_id~id)+
+#   scale_colour_iwanthue()+
+#   guides(colour = guide_legend(override.aes = list(alpha=1)))
+
 
 
 FormatReactable(rank_results(tuned_workflows))
@@ -127,17 +149,10 @@ FormatReactable(member_stats_test)
 ```
 
 ```{r tune_extract_individual, warning=FALSE, cache = params$run_cache, cache.lazy = FALSE}
-fits<-  lapply(df_wf_set$wflow_id,
-               TuneExtractModel,
-               tuned_wf =tuned_workflows,
-               outcome_var = outcome_var,
-               training_data = df_train,
-               testing_data = df_test,
-               # If no error colours were set, just use the outcome variable
-               error_colours = ifelse(sum(is.null(params$error_colours)) > 0, outcome_var,params$error_colours),
-               explain_data_input = params$explain_data)
 
-names(fits) <- df_wf_set$wflow_id
+# Tune individual workflows
+source("scripts/tune_workflows.R",echo = TRUE, local = knitr::knit_global())
+
 
 #example use:
 #fits[['main_rf']][[2]]
@@ -168,14 +183,19 @@ rmses<-
          train_rmse = fits[[e]][[4]]
          )
 })%>%
-  bind_rows()%>%
-  left_join(
-    ranked_results%>%
-      mutate(m = paste0(recipe,"_", model))%>%
-      filter(.metric == "rmse")%>%
-      dplyr::select(m, "cv_rmse" = mean),
-    by = "m"
-  )
+  bind_rows()
+
+if(params$n_folds > 1){
+  rmses<-
+    rmses%>%
+    left_join(
+      ranked_results%>%
+        mutate(m = paste0(recipe,"_", model))%>%
+        filter(.metric == "rmse")%>%
+        dplyr::select(m, "cv_rmse" = mean),
+      by = "m"
+    )
+}
 
 if(params$run_stack){
   rmses<-
@@ -301,4 +321,112 @@ for (a in params$models_to_run){
 `r knitr::knit(text = text)`
 
 ```{r child = file.path(params$path, "other_chunks","other_chunks.Rmd"), eval = file.exists(file.path(params$path, "other_chunks","other_chunks.Rmd"))}
+```
+
+```{r tune_xgb_test, warning=FALSE, eval = F}
+
+# This is how to run TuneExtractModel (more for testing)
+
+fit_xgb<-TuneExtractModel(tuned_wf =tuned_workflows,
+                 string_model = "main_xgb",
+                 training_data = df_train,
+                 testing_data = df_test)
+
+fit_xgb_best<- fit_xgb[[1]]
+fit_xgb[[2]]
+
+xgb_preds <-
+    df_test %>%
+    bind_cols(predict(fit_xgb_best, df_test))
+
+
+grid.arrange(
+  fit_xgb_best%>%
+    pull_workflow_fit()%>%
+    vip(geom = "col")
+)
+
+```
+
+```{r compare_xgb_rf, warning=FALSE, eval=F}
+
+#Compare Models
+
+# TODO: Turn into mini widget where you can compare the predictions of two models
+
+xgb_rf<-
+xgb_preds%>%
+  rename("xgb_pred" = .pred)%>%
+  mutate(xgb_error = !!sym(outcome_var) - xgb_pred )%>%
+  left_join(rf_preds%>%dplyr::select(id_hash, "rf_pred" = .pred), by = "id_hash")
+
+xgb_rf%>%
+    ggplot(aes(x = xgb_pred, y = rf_pred, colour = xgb_error))+
+    geom_point()+
+    geom_abline(linetype = "dashed",
+                color = "gray")+
+    scale_colour_distiller(type = "div")
+
+xgb_rf%>%
+    ggplot(aes(x = time_harvest_year, y = !!sym(outcome_var), colour = xgb_error))+
+    geom_point()+
+    geom_abline(linetype = "dashed",
+                color = "gray")+
+    scale_colour_distiller(type = "div")
+
+
+#### Test Errors ---------------------
+#Difference in test error
+
+  # What do all the ensemble observaitons looks like compared to individual models??
+  error_df<-
+    xgb_rf%>%
+    mutate(rf_error = !!sym(outcome_var) - rf_pred)%>%
+  left_join(ensemble_preds%>%dplyr::select(id_hash, "ensemble_pred" = .pred, ensemble_error), by = "id_hash")%>%
+  arrange(-ensemble_error)%>%
+  # Set order of plot to
+  mutate(id_hash = factor(id_hash, levels = id_hash))%>%
+  gather(var, val, contains("_error"))
+
+
+# Error widget
+
+    GenerateErrorBars(error_df, "total_emissions")
+    GenerateErrorBars(error_df, "ipcc_climate")
+    # GenerateErrorBars(error_df, "crop")
+    # GenerateErrorBars(error_df, "rs_yield")
+
+
+    
+
+WidgetErrorBar = function(dataset) {
+
+  library(shiny)
+  vars = colnames(dataset)
+
+  shinyApp(
+    ui = fluidPage(
+      fluidRow(style = "padding-bottom: 20px;",
+        column(12, selectInput('fill_var', 'Fill Variable', vars, selected = "total_emissions"))
+      ),
+      fluidRow(
+        plotlyOutput('error_bar_plot', height = "400px")
+      )
+    ),
+
+    server = function(input, output, session) {
+
+      # Combine the selected variables into a new data frame
+
+      output$error_bar_plot = renderPlotly({
+        ggplotly(GenerateErrorBars(error_df, input$fill_var))
+      })
+    },
+
+    options = list(height = 500)
+  )
+}
+
+# WidgetErrorBar(error_df)
+
 ```

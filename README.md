@@ -1,5 +1,6 @@
 # model-report
 
+
 ## Overview
 
 The goal of this report is to create a flexible, extensible system for modeling.
@@ -44,3 +45,77 @@ The repo structure contains **three** key mechanisms that help us generate an ex
 -   Project-specific R code: After the user creates a directory and adds `/src` folder, they can customize how data is read, cleaned, feature engineered, and modeled. **These files will be unique to a given project/report.**
 
 -   Project-specific parameter YAML file: These are model specific specs defining **compilation-level** information including where to access project-specific R code, stratification variables, specific models to run for that report, etc. **These files will be unique to a given project/report.**
+
+## How to set up the r environment
+We will try to  standardize our R version and packages to make our results more reproducible across machines. 
+
+We do this by taking advantage of two tools in R: 1) R [Projects](https://r4ds.hadley.nz/workflow-scripts.html#projects) and 2) the [renv](https://rstudio.github.io/renv/articles/renv.html) package for package management (similar to poetry in Python).
+
+Note: while different R versions across machines may work in most cases, getting on the same R version (4.2 in this case) removes one potential culprit for inconsistency across machines. 
+
+### Install and configure the compiler
+One major issue we noticed in setting up a shared R environment was that package installation often failed due to compiler issues. To address these issues, follow the directions below:
+
+Install GCC compiler to get a Fortran compiler. In your terminal, run:
+```
+brew install gcc
+```
+
+Make `.R` dir in your home directory, and `.R/Makevars` file. In your terminal, run:
+```
+cd ~
+makedir .R
+touch .R/Makevars
+open .R/Makevars
+```
+
+Add these lines to your `Makevars` and save the file. These are taken from these StackOverflow threads: [here](https://stackoverflow.com/a/36001449), [here](https://stackoverflow.com/a/29993906) and [here](https://stackoverflow.com/a/43527031).
+```
+VER=-13
+CC=gcc$(VER)
+CXX=g++$(VER)
+CFLAGS=-mtune=native -g -O2 -Wall -pedantic -Wconversion
+CXXFLAGS=-mtune=native -g -O2 -Wall -pedantic -Wconversion
+FLIBS=-L`gfortran -print-file-name=libgfortran.dylib | xargs dirname`
+FC=/opt/homebrew/bin/gfortran
+```
+
+Make a `.Renviron` file in your home directory. In your terminal, run:
+```
+touch ~/.Renviron
+open ~/.Renviron
+```
+
+Configure your  `.Renviron` file to point to our brew installed compiler.
+The paths we set here have to match the location of your brew installed compiler. First, get this by running in your terminal:
+```
+readlink -f $(brew --prefix gcc) 
+```
+e.g.
+```
+/opt/homebrew/Cellar/gcc/13.2.0
+```
+
+We'll now use this path to set these values in your `.Renviron`. Add the block below to your `.Renviron`, and substitute the path you retrieved in the previous step for the `{path}/lib` and `{path}/bin` values. Save your file. This is based on this StackOverflow [response](https://stackoverflow.com/a/41959471)
+```
+LD_LIBRARY_PATH=/opt/homebrew/Cellar/gcc/13.2.0/lib
+PATH=/opt/homebrew/Cellar/gcc/13.2.0/bin
+```
+
+Restart Rstudio
+
+### Work within the `model_report.Rproj` Project
+To ensure that the correct packages can be installed with `renv` and that you're working in the right environment, make sure to load the `source_research.Rproj` project file. You can confirm that this file is loaded by looking at the top right of your RStudio and seeing "Project: source_research." 
+
+Loading this project will ensure that any time you are working in the repo, RStudio will prioritize the versions of the packages specific to the Lock file associated with the project. In other words, if you have a different version of `dplyr` than what's in the Lock file, RStudio will prioritize the Lock file version of `dplyr` when the project is loaded.
+
+### Install and run `renv`
+Install the latest version of `renv`. In your R session, run:
+```
+install.packages("renv")
+```
+
+Rebuild our environment. In your R session, run:
+```
+renv::restore()
+```

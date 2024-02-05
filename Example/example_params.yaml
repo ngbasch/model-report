@@ -15,6 +15,7 @@ params:
   models_to_explain: !expr c("main_rf")
   explain_data: "Train"
   error_colours: !expr NULL
-  run_stack: TRUE
+  run_stack: FALSE
   run_explainer: TRUE
   run_cache: FALSE
+  run_visualization: TRUE
