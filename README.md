@@ -105,7 +105,7 @@ PATH=/opt/homebrew/Cellar/gcc/13.2.0/bin
 Restart Rstudio
 
 ### Work within the `model_report.Rproj` Project
-To ensure that the correct packages can be installed with `renv` and that you're working in the right environment, make sure to load the `source_research.Rproj` project file. You can confirm that this file is loaded by looking at the top right of your RStudio and seeing "Project: source_research." 
+To ensure that the correct packages can be installed with `renv` and that you're working in the right environment, make sure to load the `model_report.Rproj` project file. You can confirm that this file is loaded by looking at the top right of your RStudio and seeing "Project: model_report." 
 
 Loading this project will ensure that any time you are working in the repo, RStudio will prioritize the versions of the packages specific to the Lock file associated with the project. In other words, if you have a different version of `dplyr` than what's in the Lock file, RStudio will prioritize the Lock file version of `dplyr` when the project is loaded.
 
