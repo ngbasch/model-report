@@ -2471,7 +2471,7 @@
     },
     "randomForest": {
       "Package": "randomForest",
-      "Version": "4.7-1.1",
+      "Version": "4.7-1",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [

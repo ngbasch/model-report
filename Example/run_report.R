@@ -1,5 +1,11 @@
+library(here)
+source(file.path(here(), "Example/src/packages.R"))
+#Load functions needed to run report
+source(file.path(here(), "scripts/model_report_functions.R"))
+#Load packages needed to run report
+source(file.path(here(), "scripts/model_report_packages.R"))
 
-p<-read_yaml(file.path(here(),"Example/example_params.yaml"), eval.expr=TRUE)[[1]]
+p<-yaml::read_yaml(file.path(here(),"Example/example_params.yaml"), eval.expr=TRUE)[[1]]
 
 RenderRMD(p = p,
           od = file.path(here(),"Example/reports"),
